@@ -223,65 +223,29 @@ FROM debian:bullseye-slim AS worker
 ARG DEBIAN_FRONTEND
 ARG UID=1000
 ARG GID=1000
-ARG WORKER_USER=openms
-
-ENV LC_ALL=en_US.UTF-8
-ENV LANG=en_US.UTF-8
-ENV LANGUAGE=en_US.UTF-8
+ARG OPENMS_USER=openms
 ENV PATH="/openms-build/bin/:/openms-thirdparty/LuciPHOr2:/openms-thirdparty/MSGFPlus:/openms-thirdparty/Sirius:/openms-thirdparty/ThermoRawFileParser:/openms-thirdparty/Comet:/openms-thirdparty/Fido:/openms-thirdparty/MaRaCluster:/openms-thirdparty/MyriMatch:/thirdparty/OMSSA:/thirdparty/Percolator:/thirdparty/SpectraST:/thirdparty/XTandem:/thirdparty/crux:${PATH}"
 
 # create new user which will actually run the application
-RUN addgroup --gid ${GID} ${WORKER_USER}
-RUN adduser --disabled-password --gecos '' --uid ${UID} --gid ${GID} ${WORKER_USER}
-RUN chown -R ${WORKER_USER} /home/${WORKER_USER}
+RUN <<-EOF
+    addgroup --gid ${GID} ${OPENMS_USER}
+    adduser --disabled-password --gecos '' --uid ${UID} --gid ${GID} ${OPENMS_USER}
+    chown -R ${OPENMS_USER} /home/${OPENMS_USER}
+EOF
 
 COPY --from=boost-builder /tmp/boost_debs/* /tmp/boost_debs/
 
+# install runtime dependencies
 RUN dpkg -i /tmp/boost_debs/*.deb && rm -rf /tmp/boost_debs \
   && apt-get update \
   && apt-get install -y --no-install-recommends --no-install-suggests \
-    # TODO: these existed to support adding a few other packges, but not sure they're neded now
-    gpg \
-    gpg-agent \
-    dirmngr \
-    # OpenMS runtime deps
-    # note we could probably replace a lot of these -dev packages
-    # libqt5core5a
-    qtbase5-dev \
-    libqt5svg5 \
     libqt5opengl5 \
-    libsvm-dev \
-    libglpk-dev \
+    libsvm3 \
     libzip4 \
     zlib1g \
-    libxerces-c3.2 \
     libbz2-1.0 \
-    libomp-dev \
-    libhdf5-dev \
-    # TODO: these were here for cimage, which isn't used in this container.
-    # Can we get rid of them?
-    netcdf-bin \
-    libxml2 \
-    libnetcdf-dev \
-    # TODO: a lot of these can be removed
-    # additional OS packages
-    gnupg \
-    gnupg2 \
-    software-properties-common \
-    apt-transport-https \
-    ca-certificates \
-    locales \
-    locales-all \
-    build-essential \
-    # ttf-mscorefonts-installer \
-    # fontconfig \
-    libldap-2.4-2 \
-    libsasl2-2 \
-    libpoppler102 \
-    libcairo2 \
-    libpq5 \
-    # for pyopenms
-    libglib2.0-0 \
+    libgomp1 \
+    libxerces-c3.2 \
   && rm -rf /var/lib/apt/lists/*
 
 # copy openms binaries
@@ -290,6 +254,6 @@ COPY --from=openms-build /thirdparty /openms-thirdparty
 COPY --from=openms-build /openms-build /openms-build
 COPY --from=openms-build /OpenMS /OpenMS
 
-USER ${WORKER_USER}
+USER ${OPENMS_USER}
 
 LABEL org.opencontainers.image.source https://github.com/radusuciu/docker-openms
