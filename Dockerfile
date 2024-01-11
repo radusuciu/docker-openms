@@ -126,7 +126,6 @@ ARG MAKEFLAGS
 ENV MAKEFLAGS="${MAKEFLAGS}"
 
 COPY --from=boost-builder /tmp/boost_*debs/* /tmp/boost_debs/
-
 RUN dpkg -i /tmp/boost_debs/*.deb && rm -rf /tmp/boost_debs \
   && apt-get -y update \
   && apt-get install -y --no-install-recommends --no-install-suggests \
@@ -140,12 +139,10 @@ RUN dpkg -i /tmp/boost_debs/*.deb && rm -rf /tmp/boost_debs \
     libtool \
     make \
     git \
-    gpg \
-    wget \
     libssl-dev \
-    ca-certificates \
-    curl \
     # advanced dependencies
+    libeigen3-dev \
+    coinor-libcoinmp-dev \
     libsvm-dev \
     libglpk-dev \
     libzip-dev \
@@ -158,56 +155,40 @@ RUN dpkg -i /tmp/boost_debs/*.deb && rm -rf /tmp/boost_debs \
     libqt5svg5-dev \
     libqt5opengl5-dev \
     # for OpenMS library build
-    openjdk-11-jdk \
-  && update-ca-certificates
+    openjdk-17-jdk
 
 # installing cmake
 WORKDIR /tmp
-RUN curl -L "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-x86_64.sh" -o cmake.sh
-RUN mkdir -p /opt/cmake
-RUN sh cmake.sh --skip-license --prefix=/opt/cmake
-RUN ln -s /opt/cmake/bin/cmake /usr/local/bin/cmake
-RUN ln -s /opt/cmake/bin/ctest /usr/local/bin/ctest
-RUN rm -rf /tmp/*
+ADD https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-x86_64.sh cmake.sh
+RUN <<-EOF
+    mkdir -p /opt/cmake
+    sh cmake.sh --skip-license --prefix=/opt/cmake
+    ln -s /opt/cmake/bin/cmake /usr/local/bin/cmake
+    ln -s /opt/cmake/bin/ctest /usr/local/bin/ctest
+    rm -rf /tmp/*
+EOF
 
 # build contrib
 WORKDIR /
 RUN git clone --branch ${OPENMS_TAG} --single-branch https://github.com/OpenMS/contrib.git && rm -rf contrib/.git/
-RUN mkdir openms-contrib-build
 WORKDIR /openms-contrib-build
-
-# normally these sources would be downloaded from https://abibuilder.cs.uni-tuebingen.de/archive/openms/contrib/source_packages/
-# but this has been down for a while, so here's a (maybe temporary) workaround
-ADD https://gitlab.com/libeigen/eigen/-/archive/3.3.4/eigen-3.3.4.tar.gz https://www.coin-or.org/download/source/CoinMP/CoinMP-1.8.3.tgz archives/
-RUN <<-EOF
-    mkdir src
-
-    # OpenMS expects that the eigen src archive contains a particular directory
-    tar xzf archives/eigen-3.3.4.tar.gz -C src --one-top-level=eigen-eigen-5a0156e40feb --strip-components 1
-    
-    # with CoinMP, the directory name in the archive is fine, but the archive itself needs to be renamed
-    mv archives/CoinMP-1.8.3.tgz archives/CoinMP-1.8.3-vs22.tar.gz
-
-    cmake -DBUILD_TYPE=EIGEN ../contrib
-    cmake -DBUILD_TYPE=COINOR ../contrib
-    rm -rf archives src/
-EOF
 
 # compiling OpenMS library
 WORKDIR /
 RUN git clone --branch ${OPENMS_TAG} --single-branch ${OPENMS_REPO}
-WORKDIR /OpenMS
-
-RUN mkdir /openms-build
 WORKDIR /openms-build
 RUN /bin/bash -c "cmake -DCMAKE_BUILD_TYPE='Release' -DCMAKE_PREFIX_PATH='/openms-contrib-build/;/usr/;/usr/local' -DBOOST_USE_STATIC=OFF ../OpenMS"
 RUN make OpenMS
 
+# grabbing third party deps
 WORKDIR /OpenMS
-RUN mkdir /thirdparty \
-    && git submodule update --init THIRDPARTY \
-    && cp -r THIRDPARTY/All/* /thirdparty \
-    && cp -r THIRDPARTY/Linux/64bit/* /thirdparty
+RUN <<-EOF
+    mkdir /thirdparty
+    git submodule update --init THIRDPARTY
+    cp -r THIRDPARTY/All/* /thirdparty
+    cp -r THIRDPARTY/Linux/64bit/* /thirdparty
+EOF
+
 ENV PATH="/thirdparty/LuciPHOr2:/thirdparty/MSGFPlus:/thirdparty/Sirius:/thirdparty/ThermoRawFileParser:/thirdparty/Comet:/thirdparty/Fido:/thirdparty/MaRaCluster:/thirdparty/Percolator:/thirdparty/SpectraST:/thirdparty/XTandem:${PATH}"
 
 WORKDIR /openms-build
