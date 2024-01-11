@@ -27,4 +27,4 @@ jobs:
         build-args: |
           NUM_BUILD_CORES=2
         cache-from: type=gha,scope=ghcr.io/${{ github.repository }}/docker-openms
-        cache-to: type=gha,scope=ghcr.io/${{ github.repository }}/docker-openms
+        cache-to: type=gha,mode=max,scope=ghcr.io/${{ github.repository }}/docker-openms
