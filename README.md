@@ -6,3 +6,4 @@ Here are links to the official OpenMS repositories which contain Dockerfiles:
 - https://github.com/OpenMS/dockerfiles
 - https://github.com/OpenMS/contrib/tree/master/dockerfiles
 
+This is a work in progress. My intent is to have have tagged images for each release of OpenMS, built using GitHub Actions.
