@@ -23,10 +23,7 @@ jobs:
       with:
         target: test
         context: .
-        push: true
-        tags: |
-          ghcr.io/${{ github.repository }}/docker-openms-test:3.1.0
-          ghcr.io/${{ github.repository }}/docker-openms-test:latest
+        load: true
         build-args: |
           NUM_BUILD_CORES=4
         cache-from: type=gha
@@ -38,8 +35,8 @@ jobs:
         context: .
         push: true
         tags: |
-          ghcr.io/${{ github.repository }}/docker-openms:3.1.0
-          ghcr.io/${{ github.repository }}/docker-openms:latest
+          ghcr.io/${{ github.repository }}:3.1.0
+          ghcr.io/${{ github.repository }}:latest
         build-args: |
           NUM_BUILD_CORES=4
         cache-from: type=gha
