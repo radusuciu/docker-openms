@@ -2,6 +2,7 @@ name: Build and push Docker images
 
 on:
   workflow_dispatch:
+  push:
 
 jobs:
   build_and_push:
@@ -17,14 +18,29 @@ jobs:
         registry: ghcr.io
         username: ${{ github.repository_owner }}
         password: ${{ secrets.GITHUB_TOKEN }}
-    - name: Build and push
+    - name: Test
       uses: docker/build-push-action@v5
       with:
+        target: test
         context: .
         push: true
         tags: |
+          ghcr.io/${{ github.repository }}/docker-openms-test:3.1.0
+          ghcr.io/${{ github.repository }}/docker-openms-test:latest
+        build-args: |
+          NUM_BUILD_CORES=4
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+    - name: Build and push
+      uses: docker/build-push-action@v5
+      with:
+        target: runtime
+        context: .
+        push: true
+        tags: |
+          ghcr.io/${{ github.repository }}/docker-openms:3.1.0
           ghcr.io/${{ github.repository }}/docker-openms:latest
         build-args: |
-          NUM_BUILD_CORES=2
-        cache-from: type=gha,scope=ghcr.io/${{ github.repository }}/docker-openms
-        cache-to: type=gha,mode=max,scope=ghcr.io/${{ github.repository }}/docker-openms
+          NUM_BUILD_CORES=4
+        cache-from: type=gha
+        cache-to: type=gha,mode=max

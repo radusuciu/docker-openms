@@ -4,11 +4,12 @@ NUM_BUILD_CORES := $(shell grep -c ^processor /proc/cpuinfo)
 build:
 	docker build \
 		-f Dockerfile \
-		--target worker \
+		--target runtime \
 		--build-arg NUM_BUILD_CORES=$(NUM_BUILD_CORES) \
 		-t ghcr.io/radusuciu/docker-openms:latest \
+		-t ghcr.io/radusuciu/docker-openms:3.1.0 \
 		.
 
 .PHONY: push
 push:
-	docker push ghcr.io/radusuciu/docker-openms:latest
+	docker push -a ghcr.io/radusuciu/docker-openms:3.1.0

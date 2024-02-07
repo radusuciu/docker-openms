@@ -1,11 +1,17 @@
-ARG DEBIAN_FRONTEND=noninteractive
+ARG OPENMS_REPO=https://github.com/OpenMS/OpenMS.git
+ARG OPENMS_BRANCH=Release3.1.0
+ARG SOURCE_DIR="/tmp/OpenMS"
+ARG BUILD_DIR="${SOURCE_DIR}/bld"
+ARG INSTALL_DIR="/opt/OpenMS"
+ARG CMAKE_VERSION="3.28.1"
+ARG OPENMS_USER=openms
+ARG UID=1000
+ARG GID=1000
 ARG boost_version=1.78
+ARG BOOST_LIBS_TO_BUILD=date_time,iostreams,regex,math,random
 ARG NUM_BUILD_CORES=20
 ARG MAKEFLAGS="-j${NUM_BUILD_CORES}"
-ARG OPENMS_TAG=Release3.0.0
-ARG OPENMS_REPO=https://github.com/OpenMS/OpenMS.git
-ARG CMAKE_VERSION="3.28.1"
-ARG BOOST_LIBS_TO_BUILD=date_time,iostreams,regex,math,random
+ARG DEBIAN_FRONTEND=noninteractive
 
 
 ################################################################################
@@ -15,6 +21,7 @@ FROM debian:bullseye as boost-builder
 ARG boost_version
 ARG DEBIAN_FRONTEND
 ARG BOOST_LIBS_TO_BUILD
+
 ENV BOOST_LIBS_TO_BUILD=${BOOST_LIBS_TO_BUILD}
 
 RUN apt-get update && apt-get install -y \
@@ -115,34 +122,65 @@ EOF
 
 
 ################################################################################
-# The build stage for OpenMS
+# The minimal runtime dependencies
 ################################################################################
-FROM debian:bullseye-slim as openms-build
+FROM ubuntu:22.04 AS runtime-base
+ARG INSTALL_DIR
 ARG DEBIAN_FRONTEND
-ARG OPENMS_TAG
-ARG OPENMS_REPO
-ARG CMAKE_VERSION
-ARG MAKEFLAGS
-ENV MAKEFLAGS="${MAKEFLAGS}"
+ARG OPENMS_USER
+ARG UID
+ARG GID
+
+ENV DEBIAN_FRONTEND=${DEBIAN_FRONTEND}
+ENV PATH="${INSTALL_DIR}/bin:${PATH}"
+
+# create new user which will actually run the application
+RUN <<-EOF
+    addgroup --gid ${GID} ${OPENMS_USER}
+    adduser --disabled-password --gecos '' --uid ${UID} --gid ${GID} ${OPENMS_USER}
+    chown -R ${OPENMS_USER} /home/${OPENMS_USER}
+EOF
 
 COPY --from=boost-builder /tmp/boost_*debs/* /tmp/boost_debs/
+
 RUN dpkg -i /tmp/boost_debs/*.deb && rm -rf /tmp/boost_debs \
-  && apt-get -y update \
+  && apt-get update \
   && apt-get install -y --no-install-recommends --no-install-suggests \
-    # build requirements
+    libqt5opengl5 \
+    libsvm3 \
+    libzip4 \
+    zlib1g \
+    libbz2-1.0 \
+    libgomp1 \
+    libqt5svg5 \
+    libxerces-c3.2 \
+    coinor-libcoinmp1v5 \
+  && rm -rf /var/lib/apt/lists/*
+
+
+################################################################################
+# Building the library and tools
+################################################################################
+FROM runtime-base AS build
+ARG OPENMS_REPO
+ARG OPENMS_BRANCH
+ARG SOURCE_DIR
+ARG BUILD_DIR
+ARG INSTALL_DIR
+ARG CMAKE_VERSION
+ARG MAKEFLAGS
+
+ENV MAKEFLAGS="${MAKEFLAGS}"
+
+# install build dependencies
+RUN apt-get -y update \
+  && apt-get install -y --no-install-recommends --no-install-suggests \
+    # build system dependencies
     g++ \
-    build-essential \
-    gcc \
-    autoconf \
-    automake \
-    patch \
-    libtool \
     make \
     git \
-    libssl-dev \
-    # advanced dependencies
-    libeigen3-dev \
-    coinor-libcoinmp-dev \
+    ca-certificates \
+    # OpenMS build dependencies
     libsvm-dev \
     libglpk-dev \
     libzip-dev \
@@ -154,13 +192,16 @@ RUN dpkg -i /tmp/boost_debs/*.deb && rm -rf /tmp/boost_debs \
     qtbase5-dev \
     libqt5svg5-dev \
     libqt5opengl5-dev \
-    # for OpenMS library build
-    openjdk-17-jdk
+    libeigen3-dev \
+    coinor-libcoinmp-dev \
+  && rm -rf /var/lib/apt/lists/* \
+  && update-ca-certificates
 
 # installing cmake
 WORKDIR /tmp
 ADD https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-x86_64.sh cmake.sh
 RUN <<-EOF
+    set -eux
     mkdir -p /opt/cmake
     sh cmake.sh --skip-license --prefix=/opt/cmake
     ln -s /opt/cmake/bin/cmake /usr/local/bin/cmake
@@ -168,73 +209,70 @@ RUN <<-EOF
     rm -rf /tmp/*
 EOF
 
-# build contrib
-WORKDIR /
-RUN git clone --branch ${OPENMS_TAG} --single-branch https://github.com/OpenMS/contrib.git && rm -rf contrib/.git/
-WORKDIR /openms-contrib-build
-
-# compiling OpenMS library
-WORKDIR /
-RUN git clone --branch ${OPENMS_TAG} --single-branch ${OPENMS_REPO}
-WORKDIR /openms-build
-RUN /bin/bash -c "cmake -DCMAKE_BUILD_TYPE='Release' -DCMAKE_PREFIX_PATH='/openms-contrib-build/;/usr/;/usr/local' -DBOOST_USE_STATIC=OFF ../OpenMS"
-RUN make OpenMS
-
-# grabbing third party deps
-WORKDIR /OpenMS
-RUN <<-EOF
-    mkdir /thirdparty
-    git submodule update --init THIRDPARTY
-    cp -r THIRDPARTY/All/* /thirdparty
-    cp -r THIRDPARTY/Linux/64bit/* /thirdparty
-EOF
-
-ENV PATH="/thirdparty/LuciPHOr2:/thirdparty/MSGFPlus:/thirdparty/Sirius:/thirdparty/ThermoRawFileParser:/thirdparty/Comet:/thirdparty/Fido:/thirdparty/MaRaCluster:/thirdparty/Percolator:/thirdparty/SpectraST:/thirdparty/XTandem:${PATH}"
-
-WORKDIR /openms-build
-RUN make TOPP && make UTILS && rm -rf src doc CMakeFiles
+RUN git clone --depth=1 --branch=${OPENMS_BRANCH} ${OPENMS_REPO} ${SOURCE_DIR}
+WORKDIR ${BUILD_DIR}
+RUN cmake \
+    -DCMAKE_BUILD_TYPE='Release' \
+    -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR} \
+    -DBOOST_USE_STATIC=OFF \
+    -S ${SOURCE_DIR} \
+    -B ${BUILD_DIR}
+RUN make all
+RUN make install/strip
 
 
 ################################################################################
-# Here we copy all of the binaries we need from the previous stage so the final
-# image is as small as possible. We also install the runtime dependencies for
-# OpenMS.
+# The minimal (hopefully) runtime
 ################################################################################
-FROM debian:bullseye-slim AS worker
-ARG DEBIAN_FRONTEND
-ARG UID=1000
-ARG GID=1000
-ARG OPENMS_USER=openms
-ENV PATH="/openms-build/bin/:/openms-thirdparty/LuciPHOr2:/openms-thirdparty/MSGFPlus:/openms-thirdparty/Sirius:/openms-thirdparty/ThermoRawFileParser:/openms-thirdparty/Comet:/openms-thirdparty/Fido:/openms-thirdparty/MaRaCluster:/openms-thirdparty/MyriMatch:/thirdparty/OMSSA:/thirdparty/Percolator:/thirdparty/SpectraST:/thirdparty/XTandem:/thirdparty/crux:${PATH}"
+FROM runtime-base AS runtime
+ARG OPENMS_USER
+ARG INSTALL_DIR
 
-# create new user which will actually run the application
-RUN <<-EOF
-    addgroup --gid ${GID} ${OPENMS_USER}
-    adduser --disabled-password --gecos '' --uid ${UID} --gid ${GID} ${OPENMS_USER}
-    chown -R ${OPENMS_USER} /home/${OPENMS_USER}
-EOF
-
-COPY --from=boost-builder /tmp/boost_debs/* /tmp/boost_debs/
-
-# install runtime dependencies
-RUN dpkg -i /tmp/boost_debs/*.deb && rm -rf /tmp/boost_debs \
-  && apt-get update \
-  && apt-get install -y --no-install-recommends --no-install-suggests \
-    libqt5opengl5 \
-    libsvm3 \
-    libzip4 \
-    zlib1g \
-    libbz2-1.0 \
-    libgomp1 \
-    libxerces-c3.2 \
-  && rm -rf /var/lib/apt/lists/*
-
-# copy openms binaries
-COPY --from=openms-build /openms-contrib-build /openms-contrib-build
-COPY --from=openms-build /thirdparty /openms-thirdparty
-COPY --from=openms-build /openms-build /openms-build
-COPY --from=openms-build /OpenMS /OpenMS
+COPY --from=build ${INSTALL_DIR}/lib ${INSTALL_DIR}/lib
+COPY --from=build ${INSTALL_DIR}/include ${INSTALL_DIR}/include
+COPY --from=build ${INSTALL_DIR}/share ${INSTALL_DIR}/share
+COPY --from=build ${INSTALL_DIR}/bin ${INSTALL_DIR}/bin
 
 USER ${OPENMS_USER}
+WORKDIR /home/${OPENMS_USER}
 
 LABEL org.opencontainers.image.source https://github.com/radusuciu/docker-openms
+
+
+################################################################################
+# Making sure that the built tools and library pass the test suite, alongside
+# the runtime dependencies.
+################################################################################
+FROM runtime AS test
+ARG SOURCE_DIR
+ARG BUILD_DIR
+ARG CMAKE_VERSION
+ARG NUM_BUILD_CORES
+
+USER root
+
+RUN apt-get update \ 
+    && apt-get install -y --no-install-recommends --no-install-suggests \
+    # we need Xvfb to run a small subset of tests (eg. TOPP_INIUpdater)
+    xvfb \
+    # needed for TSGDialog_test and TOPPView_test
+    libqt5test5 \
+  && rm -rf /var/lib/apt/lists/*
+
+# installing cmake
+WORKDIR /tmp
+ADD https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-x86_64.sh cmake.sh
+RUN <<-EOF
+    set -eux
+    mkdir -p /opt/cmake
+    sh cmake.sh --skip-license --prefix=/opt/cmake
+    ln -s /opt/cmake/bin/cmake /usr/local/bin/cmake
+    ln -s /opt/cmake/bin/ctest /usr/local/bin/ctest
+    rm -rf /tmp/*
+EOF
+
+COPY --from=build ${SOURCE_DIR} ${SOURCE_DIR}
+COPY --from=build ${BUILD_DIR} ${BUILD_DIR}
+
+WORKDIR ${BUILD_DIR}
+RUN xvfb-run -a ctest --output-on-failure -j${NUM_BUILD_CORES}
