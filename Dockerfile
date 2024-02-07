@@ -17,7 +17,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 ################################################################################
 # Building only the boost libs that we need and packaging them into debs. 
 ################################################################################
-FROM debian:bullseye as boost-builder
+FROM debian:bullseye-slim as boost-builder
 ARG boost_version
 ARG DEBIAN_FRONTEND
 ARG BOOST_LIBS_TO_BUILD
@@ -124,7 +124,7 @@ EOF
 ################################################################################
 # The minimal runtime dependencies
 ################################################################################
-FROM ubuntu:22.04 AS runtime-base
+FROM debian:bullseye-slim AS runtime-base
 ARG INSTALL_DIR
 ARG DEBIAN_FRONTEND
 ARG OPENMS_USER
