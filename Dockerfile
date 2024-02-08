@@ -231,6 +231,16 @@ RUN make install/strip
 ################################################################################
 # The minimal (hopefully) runtime
 ################################################################################
+FROM build AS share-without-examples
+ARG SOURCE_DIR
+ARG INSTALL_DIR
+
+# copying from SOURCE_DIR instead of INSTALL_DIR due to bug affecting OpenMS 3.1.0
+# NOTE: bug was fixed in https://github.com/OpenMS/OpenMS/pull/7337
+COPY --from=build ${SOURCE_DIR}/share ${INSTALL_DIR}/share
+RUN rm -r ${INSTALL_DIR}/share/OpenMS/examples
+
+
 FROM runtime-base AS runtime
 ARG OPENMS_USER
 ARG SOURCE_DIR
@@ -239,15 +249,12 @@ ARG INSTALL_DIR
 COPY --from=build ${INSTALL_DIR}/lib ${INSTALL_DIR}/lib
 COPY --from=build ${INSTALL_DIR}/include ${INSTALL_DIR}/include
 COPY --from=build ${INSTALL_DIR}/bin ${INSTALL_DIR}/bin
-# copying from SOURCE_DIR instead of INSTALL_DIR due to bug affecting OpenMS 3.1.0
-# NOTE: bug was fixed in https://github.com/OpenMS/OpenMS/pull/7337
-COPY --from=build ${SOURCE_DIR}/share ${INSTALL_DIR}/share
+COPY --from=share-without-examples ${INSTALL_DIR}/share ${INSTALL_DIR}/share
 
 USER ${OPENMS_USER}
 WORKDIR /home/${OPENMS_USER}
 
 LABEL org.opencontainers.image.source https://github.com/radusuciu/docker-openms
-
 
 
 ################################################################################

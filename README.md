@@ -8,6 +8,9 @@ This is based off work I've [contributed upstream](https://github.com/OpenMS/Ope
 - based on Debian instead of Ubuntu
 - built without GUI support
 - built with static boost
+- removed example files
+
+These changes were made in an effort to minimize the size of the image for my application. At time of writing the image is 459MB, almost 2x smaller than the official image. Any advice on shrinking this further would be much appreciated!
 
 ## Use
 
