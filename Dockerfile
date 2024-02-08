@@ -104,11 +104,11 @@ cat > debian/rules <<EOF_RULES
 override_dh_auto_configure:
 	./bootstrap.sh
 override_dh_auto_build:
-	./b2 $(echo $BOOST_LIBS_TO_BUILD | sed 's/,/ --with-/g' | awk '{print "--with-"$0}') link=static,shared -j ${BOOST_BUILD_CORES} --prefix=`pwd`/debian/boost-all/usr/
+	./b2 $(echo $BOOST_LIBS_TO_BUILD | sed 's/,/ --with-/g' | awk '{print "--with-"$0}') link=static -j ${BOOST_BUILD_CORES} --prefix=`pwd`/debian/boost-all/usr/
 override_dh_auto_test:
 override_dh_auto_install:
 	mkdir -p debian/boost-all/usr debian/boost-all-dev/usr
-	./b2 $(echo $BOOST_LIBS_TO_BUILD | sed 's/,/ --with-/g' | awk '{print "--with-"$0}') link=static,shared --prefix=`pwd`/debian/boost-all/usr/ install
+	./b2 $(echo $BOOST_LIBS_TO_BUILD | sed 's/,/ --with-/g' | awk '{print "--with-"$0}') link=static --prefix=`pwd`/debian/boost-all/usr/ install
 	mv debian/boost-all/usr/include debian/boost-all-dev/usr
 EOF_RULES
 #Create some misc files
@@ -144,10 +144,7 @@ RUN <<-EOF
     chown -R ${OPENMS_USER} /home/${OPENMS_USER}
 EOF
 
-COPY --from=boost-builder /tmp/boost_*debs/* /tmp/boost_debs/
-
-RUN dpkg -i /tmp/boost_debs/*.deb && rm -rf /tmp/boost_debs \
-  && apt-get update \
+RUN apt-get update \
   && apt-get install -y --no-install-recommends --no-install-suggests \
     libqt5opengl5 \
     libsvm3 \
@@ -176,8 +173,12 @@ ARG MAKEFLAGS
 
 ENV MAKEFLAGS="${MAKEFLAGS}"
 
+COPY --from=boost-builder /tmp/boost_*debs/* /tmp/boost_debs/
+
 # install build dependencies
-RUN apt-get -y update \
+RUN dpkg -i /tmp/boost_debs/*.deb \
+  && rm -rf /tmp/boost_debs \
+  && apt-get -y update \
   && apt-get install -y --no-install-recommends --no-install-suggests \
     # build system dependencies
     g++ \
@@ -195,7 +196,6 @@ RUN apt-get -y update \
     libhdf5-dev \
     qtbase5-dev \
     libqt5svg5-dev \
-    libqt5opengl5-dev \
     libeigen3-dev \
     coinor-libcoinmp-dev \
   && rm -rf /var/lib/apt/lists/* \
@@ -218,7 +218,10 @@ WORKDIR ${BUILD_DIR}
 RUN cmake \
     -DCMAKE_BUILD_TYPE='Release' \
     -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR} \
-    -DBOOST_USE_STATIC=OFF \
+    -DBOOST_USE_STATIC=ON \
+    -DHAS_XSERVER=OFF \
+    -DENABLE_DOCS=OFF \
+    -DWITH_GUI=OFF \
     -S ${SOURCE_DIR} \
     -B ${BUILD_DIR}
 RUN make all
@@ -235,10 +238,10 @@ ARG INSTALL_DIR
 
 COPY --from=build ${INSTALL_DIR}/lib ${INSTALL_DIR}/lib
 COPY --from=build ${INSTALL_DIR}/include ${INSTALL_DIR}/include
+COPY --from=build ${INSTALL_DIR}/bin ${INSTALL_DIR}/bin
 # copying from SOURCE_DIR instead of INSTALL_DIR due to bug affecting OpenMS 3.1.0
 # NOTE: bug was fixed in https://github.com/OpenMS/OpenMS/pull/7337
 COPY --from=build ${SOURCE_DIR}/share ${INSTALL_DIR}/share
-COPY --from=build ${INSTALL_DIR}/bin ${INSTALL_DIR}/bin
 
 USER ${OPENMS_USER}
 WORKDIR /home/${OPENMS_USER}
@@ -246,14 +249,33 @@ WORKDIR /home/${OPENMS_USER}
 LABEL org.opencontainers.image.source https://github.com/radusuciu/docker-openms
 
 
+
+################################################################################
+# The whole test suit is being run, but not everything is built in the build
+# stage.. so this is just to prevent those tests from failing (eg. because some 
+# tests depend on docs being built). 
+################################################################################
+FROM build AS test-build
+ARG SOURCE_DIR
+ARG BUILD_DIR
+ARG NUM_BUILD_CORES
+
+WORKDIR ${BUILD_DIR}
+RUN cmake -DENABLE_DOCS=ON -S${SOURCE_DIR} -B${BUILD_DIR}
+RUN make all
+
+
 ################################################################################
 # Making sure that the built tools and library pass the test suite, alongside
-# the runtime dependencies.
+# the runtime dependencies
+#
+# NOTE: the installed/stripped binaries are not actually tested - this is more
+#       of a sanity check to make sure that the runtime dependencies meet the
+#       requirements of the built executables and library.
 ################################################################################
 FROM runtime AS test
 ARG SOURCE_DIR
 ARG BUILD_DIR
-ARG CMAKE_VERSION
 ARG CMAKE_INSTALL_DIR
 ARG NUM_BUILD_CORES
 
@@ -261,18 +283,9 @@ ENV PATH="${CMAKE_INSTALL_DIR}/bin:${PATH}"
 
 USER root
 
-RUN apt-get update \ 
-    && apt-get install -y --no-install-recommends --no-install-suggests \
-    # we need Xvfb to run a small subset of tests (eg. TOPP_INIUpdater)
-    xvfb \
-    xauth \
-    # needed for TSGDialog_test and TOPPView_test
-    libqt5test5 \
-  && rm -rf /var/lib/apt/lists/*
-
-COPY --from=build ${SOURCE_DIR} ${SOURCE_DIR}
-COPY --from=build ${BUILD_DIR} ${BUILD_DIR}
-COPY --from=build ${CMAKE_INSTALL_DIR} ${CMAKE_INSTALL_DIR}
+COPY --from=test-build ${CMAKE_INSTALL_DIR} ${CMAKE_INSTALL_DIR}
+COPY --from=test-build ${SOURCE_DIR} ${SOURCE_DIR}
+COPY --from=test-build ${BUILD_DIR} ${BUILD_DIR}
 
 WORKDIR ${BUILD_DIR}
-RUN xvfb-run -a ctest --output-on-failure -j${NUM_BUILD_CORES}
+RUN ctest --output-on-failure -j${NUM_BUILD_CORES}

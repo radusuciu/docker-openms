@@ -19,6 +19,7 @@ boost:
 		-f Dockerfile \
 		--target boost-builder \
 		-t docker-openms-boost \
+		--build-arg NUM_BUILD_CORES=$(NUM_BUILD_CORES) \
 		--build-arg BOOST_BUILD_CORES=4 \
 		.
 
@@ -28,6 +29,7 @@ test:
 		-f Dockerfile \
 		--target test \
 		--build-arg NUM_BUILD_CORES=$(NUM_BUILD_CORES) \
+		--build-arg BOOST_BUILD_CORES=4 \
 		-t docker-openms-test \
 		.
 
