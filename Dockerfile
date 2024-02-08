@@ -4,6 +4,7 @@ ARG SOURCE_DIR="/tmp/OpenMS"
 ARG BUILD_DIR="${SOURCE_DIR}/bld"
 ARG INSTALL_DIR="/opt/OpenMS"
 ARG CMAKE_VERSION="3.28.1"
+ARG CMAKE_INSTALL_DIR="/opt/cmake"
 ARG OPENMS_USER=openms
 ARG UID=1000
 ARG GID=1000
@@ -170,6 +171,7 @@ ARG SOURCE_DIR
 ARG BUILD_DIR
 ARG INSTALL_DIR
 ARG CMAKE_VERSION
+ARG CMAKE_INSTALL_DIR
 ARG MAKEFLAGS
 
 ENV MAKEFLAGS="${MAKEFLAGS}"
@@ -205,7 +207,7 @@ ADD https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-$
 RUN <<-EOF
     set -eux
     mkdir -p /opt/cmake
-    sh cmake.sh --skip-license --prefix=/opt/cmake
+    sh cmake.sh --skip-license --prefix=${CMAKE_INSTALL_DIR}
     ln -s /opt/cmake/bin/cmake /usr/local/bin/cmake
     ln -s /opt/cmake/bin/ctest /usr/local/bin/ctest
     rm -rf /tmp/*
@@ -252,7 +254,10 @@ FROM runtime AS test
 ARG SOURCE_DIR
 ARG BUILD_DIR
 ARG CMAKE_VERSION
+ARG CMAKE_INSTALL_DIR
 ARG NUM_BUILD_CORES
+
+ENV PATH="${CMAKE_INSTALL_DIR}/bin:${PATH}"
 
 USER root
 
@@ -265,20 +270,9 @@ RUN apt-get update \
     libqt5test5 \
   && rm -rf /var/lib/apt/lists/*
 
-# installing cmake
-WORKDIR /tmp
-ADD https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-x86_64.sh cmake.sh
-RUN <<-EOF
-    set -eux
-    mkdir -p /opt/cmake
-    sh cmake.sh --skip-license --prefix=/opt/cmake
-    ln -s /opt/cmake/bin/cmake /usr/local/bin/cmake
-    ln -s /opt/cmake/bin/ctest /usr/local/bin/ctest
-    rm -rf /tmp/*
-EOF
-
 COPY --from=build ${SOURCE_DIR} ${SOURCE_DIR}
 COPY --from=build ${BUILD_DIR} ${BUILD_DIR}
+COPY --from=build ${CMAKE_INSTALL_DIR} ${CMAKE_INSTALL_DIR}
 
 WORKDIR ${BUILD_DIR}
 RUN xvfb-run -a ctest --output-on-failure -j${NUM_BUILD_CORES}
