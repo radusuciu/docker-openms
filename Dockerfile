@@ -134,7 +134,6 @@ ARG OPENMS_USER
 ARG UID
 ARG GID
 
-ENV DEBIAN_FRONTEND=${DEBIAN_FRONTEND}
 ENV PATH="${INSTALL_DIR}/bin:${PATH}"
 
 # create new user which will actually run the application
