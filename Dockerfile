@@ -283,6 +283,7 @@ RUN make all
 FROM runtime AS test
 ARG SOURCE_DIR
 ARG BUILD_DIR
+ARG INSTALL_DIR
 ARG CMAKE_INSTALL_DIR
 ARG NUM_BUILD_CORES
 
@@ -293,6 +294,9 @@ USER root
 COPY --from=test-build ${CMAKE_INSTALL_DIR} ${CMAKE_INSTALL_DIR}
 COPY --from=test-build ${SOURCE_DIR} ${SOURCE_DIR}
 COPY --from=test-build ${BUILD_DIR} ${BUILD_DIR}
+# as above, patched to use share from source instead of install
+# can remove for releases post 3.1.0
+COPY --from=test-build ${SOURCE_DIR}/share ${INSTALL_DIR}/share
 
 WORKDIR ${BUILD_DIR}
 RUN ctest --output-on-failure -j${NUM_BUILD_CORES}
