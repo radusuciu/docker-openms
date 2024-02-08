@@ -10,6 +10,7 @@ ARG GID=1000
 ARG boost_version=1.78
 ARG BOOST_LIBS_TO_BUILD=date_time,iostreams,regex,math,random
 ARG NUM_BUILD_CORES=20
+ARG BOOST_BUILD_CORES=1
 ARG MAKEFLAGS="-j${NUM_BUILD_CORES}"
 ARG DEBIAN_FRONTEND=noninteractive
 
@@ -21,6 +22,7 @@ FROM debian:bullseye-slim as boost-builder
 ARG boost_version
 ARG DEBIAN_FRONTEND
 ARG BOOST_LIBS_TO_BUILD
+ARG BOOST_BUILD_CORES
 
 ENV BOOST_LIBS_TO_BUILD=${BOOST_LIBS_TO_BUILD}
 
@@ -101,7 +103,7 @@ cat > debian/rules <<EOF_RULES
 override_dh_auto_configure:
 	./bootstrap.sh
 override_dh_auto_build:
-	./b2 $(echo $BOOST_LIBS_TO_BUILD | sed 's/,/ --with-/g' | awk '{print "--with-"$0}') link=static,shared -j 1 --prefix=`pwd`/debian/boost-all/usr/
+	./b2 $(echo $BOOST_LIBS_TO_BUILD | sed 's/,/ --with-/g' | awk '{print "--with-"$0}') link=static,shared -j ${BOOST_BUILD_CORES} --prefix=`pwd`/debian/boost-all/usr/
 override_dh_auto_test:
 override_dh_auto_install:
 	mkdir -p debian/boost-all/usr debian/boost-all-dev/usr
