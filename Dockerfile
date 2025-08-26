@@ -1,5 +1,5 @@
 ARG OPENMS_REPO=https://github.com/OpenMS/OpenMS.git
-ARG OPENMS_BRANCH=Release3.1.0
+ARG OPENMS_BRANCH=release/3.4.1
 ARG SOURCE_DIR="/tmp/OpenMS"
 ARG BUILD_DIR="${SOURCE_DIR}/bld"
 ARG INSTALL_DIR="/opt/OpenMS"
@@ -8,7 +8,7 @@ ARG CMAKE_INSTALL_DIR="/opt/cmake"
 ARG OPENMS_USER=openms
 ARG UID=1000
 ARG GID=1000
-ARG boost_version=1.78
+ARG boost_version=1.85
 ARG BOOST_LIBS_TO_BUILD=date_time,iostreams,regex,math,random
 ARG NUM_BUILD_CORES=20
 ARG BOOST_BUILD_CORES=1
@@ -19,7 +19,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 ################################################################################
 # Building only the boost libs that we need and packaging them into debs. 
 ################################################################################
-FROM debian:bullseye-slim as boost-builder
+FROM debian:bookworm-slim AS boost-builder
 ARG boost_version
 ARG DEBIAN_FRONTEND
 ARG BOOST_LIBS_TO_BUILD
@@ -30,7 +30,7 @@ ENV BOOST_LIBS_TO_BUILD=${BOOST_LIBS_TO_BUILD}
 RUN apt-get update && apt-get install -y \
     build-essential \
     g++ \
-    python-dev \
+    python3 \
     autotools-dev \
     libicu-dev \
     libbz2-dev \
@@ -127,7 +127,7 @@ EOF
 ################################################################################
 # The minimal runtime dependencies
 ################################################################################
-FROM debian:bullseye-slim AS runtime-base
+FROM debian:bookworm-slim AS runtime-base
 ARG INSTALL_DIR
 ARG DEBIAN_FRONTEND
 ARG OPENMS_USER
@@ -145,13 +145,13 @@ EOF
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends --no-install-suggests \
-    libqt5opengl5 \
+    libqt6opengl6 \
     libsvm3 \
     libzip4 \
     zlib1g \
     libbz2-1.0 \
     libgomp1 \
-    libqt5svg5 \
+    libqt6svg6 \
     libxerces-c3.2 \
     coinor-libcoinmp1v5 \
   && rm -rf /var/lib/apt/lists/*
@@ -193,8 +193,8 @@ RUN dpkg -i /tmp/boost_debs/*.deb \
     libbz2-dev \
     libomp-dev \
     libhdf5-dev \
-    qtbase5-dev \
-    libqt5svg5-dev \
+    qt6-base-dev \
+    libqt6svg6-dev \
     libeigen3-dev \
     coinor-libcoinmp-dev \
   && rm -rf /var/lib/apt/lists/* \
@@ -253,7 +253,7 @@ COPY --from=share-without-examples ${INSTALL_DIR}/share ${INSTALL_DIR}/share
 USER ${OPENMS_USER}
 WORKDIR /home/${OPENMS_USER}
 
-LABEL org.opencontainers.image.source https://github.com/radusuciu/docker-openms
+LABEL org.opencontainers.image.source=https://github.com/radusuciu/docker-openms
 
 
 ################################################################################

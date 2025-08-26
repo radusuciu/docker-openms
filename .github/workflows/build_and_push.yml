@@ -19,7 +19,7 @@ jobs:
         username: ${{ github.repository_owner }}
         password: ${{ secrets.GITHUB_TOKEN }}
     - name: Test
-      uses: docker/build-push-action@v5
+      uses: docker/build-push-action@v6
       with:
         target: test
         context: .
@@ -29,13 +29,13 @@ jobs:
         cache-from: type=gha
         cache-to: type=gha,mode=max
     - name: Build and push
-      uses: docker/build-push-action@v5
+      uses: docker/build-push-action@v6
       with:
         target: runtime
         context: .
         push: true
         tags: |
-          ghcr.io/${{ github.repository }}:3.1.0
+          ghcr.io/${{ github.repository }}:3.4.1
           ghcr.io/${{ github.repository }}:latest
         build-args: |
           NUM_BUILD_CORES=4

@@ -8,9 +8,9 @@ build:
 		--build-arg NUM_BUILD_CORES=$(NUM_BUILD_CORES) \
 		--build-arg BOOST_BUILD_CORES=4 \
 		-t ghcr.io/radusuciu/docker-openms:latest \
-		-t ghcr.io/radusuciu/docker-openms:3.1.0 \
+		-t ghcr.io/radusuciu/docker-openms:3.4.1 \
 		-t docker-openms:latest \
-		-t docker-openms:3.1.0 \
+		-t docker-openms:3.4.1 \
 		.
 
 .PHONY: boost
@@ -35,4 +35,4 @@ test:
 
 .PHONY: push
 push:
-	docker push -a ghcr.io/radusuciu/docker-openms:3.1.0
+	docker push -a ghcr.io/radusuciu/docker-openms:3.4.1
