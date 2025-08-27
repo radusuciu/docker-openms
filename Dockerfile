@@ -232,12 +232,9 @@ RUN make install/strip
 # The minimal (hopefully) runtime
 ################################################################################
 FROM build AS share-without-examples
-ARG SOURCE_DIR
 ARG INSTALL_DIR
 
-# copying from SOURCE_DIR instead of INSTALL_DIR due to bug affecting OpenMS 3.1.0
-# NOTE: bug was fixed in https://github.com/OpenMS/OpenMS/pull/7337
-COPY --from=build ${SOURCE_DIR}/share ${INSTALL_DIR}/share
+COPY --from=build ${INSTALL_DIR}/share ${INSTALL_DIR}/share
 RUN rm -r ${INSTALL_DIR}/share/OpenMS/examples
 
 
