@@ -154,6 +154,7 @@ RUN apt-get update \
     libqt6svg6 \
     libxerces-c3.2 \
     coinor-libcoinmp1v5 \
+    libqt6network6 \
   && rm -rf /var/lib/apt/lists/*
 
 
