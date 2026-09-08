@@ -8,120 +8,9 @@ ARG CMAKE_INSTALL_DIR="/opt/cmake"
 ARG OPENMS_USER=openms
 ARG UID=1000
 ARG GID=1000
-ARG boost_version=1.78
-ARG BOOST_LIBS_TO_BUILD=date_time,iostreams,regex,math,random
 ARG NUM_BUILD_CORES=20
-ARG BOOST_BUILD_CORES=1
 ARG MAKEFLAGS="-j${NUM_BUILD_CORES}"
 ARG DEBIAN_FRONTEND=noninteractive
-
-
-################################################################################
-# Building only the boost libs that we need and packaging them into debs. 
-################################################################################
-FROM debian:bookworm-slim AS boost-builder
-ARG boost_version
-ARG DEBIAN_FRONTEND
-ARG BOOST_LIBS_TO_BUILD
-ARG BOOST_BUILD_CORES
-
-ENV BOOST_LIBS_TO_BUILD=${BOOST_LIBS_TO_BUILD}
-
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    g++ \
-    python3 \
-    autotools-dev \
-    libicu-dev \
-    libbz2-dev \
-    wget \
-    devscripts \
-    debhelper \
-    fakeroot \
-    cdbs \
-    zlib1g-dev \
-    && rm -rf /var/lib/apt/lists/* 
-
-# script modified from
-#
-# https://github.com/ulikoehler/deb-buildscripts
-# authored by Uli Köhler and distributed under CC0 1.0 Universal
-#
-# I am including it as a heredoc because I want to keep it all in one
-# Dockerfile, though I may reconsider in the future.
-RUN <<EOF
-
-export MAJORVERSION=$(echo $boost_version | cut -d. -f1)
-export MINORVERSION=$(echo $boost_version | cut -d. -f2)
-export PATCHVERSION=$(echo $boost_version | cut -d. -f3)
-export PATCHVERSION=${PATCHVERSION:-0}
-export FULLVERSION=${MAJORVERSION}.${MINORVERSION}.${PATCHVERSION}
-export UNDERSCOREVERSION=${MAJORVERSION}_${MINORVERSION}_${PATCHVERSION}
-export DEBVERSION=${FULLVERSION}-1
-
-if [ ! -d "boost_${UNDERSCOREVERSION}" ]; then
-    # NOTE: URLs here are subject to change. see: https://github.com/boostorg/boost/issues/845
-    wget "https://archives.boost.io/release/${FULLVERSION}/source/boost_${UNDERSCOREVERSION}.tar.bz2" -O boost-all_${FULLVERSION}.orig.tar.bz2
-    tar xjvf boost-all_${FULLVERSION}.orig.tar.bz2
-fi
-
-cd boost_${UNDERSCOREVERSION}
-#Build DEB
-rm -rf debian
-mkdir -p debian
-#Use the LICENSE file from nodejs as copying file
-touch debian/copying
-#Create the changelog (no messages needed)
-export DEBEMAIL="none@example.com"
-dch --create -v $DEBVERSION --package boost-all ""
-#Create copyright file
-touch debian
-#Create control file
-cat > debian/control <<EOF_CONTROL
-Source: boost-all
-Maintainer: None <none@example.com>
-Section: misc
-Priority: optional
-Standards-Version: 3.9.2
-Build-Depends: debhelper (>= 8), cdbs, libbz2-dev, zlib1g-dev
-
-Package: boost-all
-Architecture: amd64
-Depends: \${shlibs:Depends}, \${misc:Depends}, boost-all (= $DEBVERSION)
-Description: Boost library, version $DEBVERSION (shared libraries)
-
-Package: boost-all-dev
-Architecture: any
-Depends: boost-all (= $DEBVERSION)
-Description: Boost library, version $DEBVERSION (development files)
-
-EOF_CONTROL
-#Create rules file
-cat > debian/rules <<EOF_RULES
-#!/usr/bin/make -f
-%:
-	dh \$@
-override_dh_auto_configure:
-	./bootstrap.sh
-override_dh_auto_build:
-	./b2 $(echo $BOOST_LIBS_TO_BUILD | sed 's/,/ --with-/g' | awk '{print "--with-"$0}') link=static -j ${BOOST_BUILD_CORES} --prefix=`pwd`/debian/boost-all/usr/
-override_dh_auto_test:
-override_dh_auto_install:
-	mkdir -p debian/boost-all/usr debian/boost-all-dev/usr
-	./b2 $(echo $BOOST_LIBS_TO_BUILD | sed 's/,/ --with-/g' | awk '{print "--with-"$0}') link=static --prefix=`pwd`/debian/boost-all/usr/ install
-	mv debian/boost-all/usr/include debian/boost-all-dev/usr
-EOF_RULES
-#Create some misc files
-echo "10" > debian/compat
-mkdir -p debian/source
-echo "3.0 (quilt)" > debian/source/format
-#Build the package
-debuild -b
-cd ..
-mkdir -p /tmp/boost_debs /tmp/boost_dev_debs
-mv boost-all-dev_${DEBVERSION}*.deb /tmp/boost_dev_debs/
-mv boost-all_${DEBVERSION}*.deb /tmp/boost_debs/
-EOF
 
 
 ################################################################################
@@ -143,6 +32,12 @@ RUN <<-EOF
     chown -R ${OPENMS_USER} /home/${OPENMS_USER}
 EOF
 
+# NOTE: cmake asks for boost iostreams, date_time and regex (see find_boost in
+#       cmake/cmake_findExternalLibs.cmake), but only regex actually ends up as a
+#       NEEDED entry - OpenMS only uses the header-only parts of the other two.
+#       The `test` stage is what guards this: it runs ctest against the runtime
+#       dependency set, so if that ever stops being true it fails there.
+#       libicu is pulled in by libboost-regex, but xerces/Qt already require it.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends --no-install-suggests \
     libqt6opengl6 \
@@ -155,6 +50,7 @@ RUN apt-get update \
     libxerces-c3.2 \
     coinor-libcoinmp1v5 \
     libqt6network6 \
+    libboost-regex1.74.0 \
   && rm -rf /var/lib/apt/lists/*
 
 
@@ -173,12 +69,8 @@ ARG MAKEFLAGS
 
 ENV MAKEFLAGS="${MAKEFLAGS}"
 
-COPY --from=boost-builder /tmp/boost_*debs/* /tmp/boost_debs/
-
 # install build dependencies
-RUN dpkg -i /tmp/boost_debs/*.deb \
-  && rm -rf /tmp/boost_debs \
-  && apt-get -y update \
+RUN apt-get -y update \
   && apt-get install -y --no-install-recommends --no-install-suggests \
     # build system dependencies
     g++ \
@@ -198,6 +90,13 @@ RUN dpkg -i /tmp/boost_debs/*.deb \
     libqt6svg6-dev \
     libeigen3-dev \
     coinor-libcoinmp-dev \
+    # boost: bookworm ships 1.74, which is exactly the minimum OpenMS asks for
+    # and the same version upstream builds release/3.4.1 against
+    libboost-date-time-dev \
+    libboost-iostreams-dev \
+    libboost-regex-dev \
+    libboost-math-dev \
+    libboost-random-dev \
   && rm -rf /var/lib/apt/lists/* \
   && update-ca-certificates
 
@@ -215,10 +114,13 @@ EOF
 
 RUN git clone --depth=1 --branch=${OPENMS_BRANCH} ${OPENMS_REPO} ${SOURCE_DIR}
 WORKDIR ${BUILD_DIR}
+# NOTE: BOOST_USE_STATIC has to be OFF with distro boost - Debian's libboost_*.a
+#       are not built with -fPIC, so they cannot be linked into libOpenMS.so.
+#       This matches what upstream does for release/3.4.1.
 RUN cmake \
     -DCMAKE_BUILD_TYPE='Release' \
     -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR} \
-    -DBOOST_USE_STATIC=ON \
+    -DBOOST_USE_STATIC=OFF \
     -DHAS_XSERVER=OFF \
     -DENABLE_DOCS=OFF \
     -DWITH_GUI=OFF \

@@ -6,21 +6,10 @@ build:
 		-f Dockerfile \
 		--target runtime \
 		--build-arg NUM_BUILD_CORES=$(NUM_BUILD_CORES) \
-		--build-arg BOOST_BUILD_CORES=4 \
 		-t ghcr.io/radusuciu/docker-openms:latest \
 		-t ghcr.io/radusuciu/docker-openms:3.4.1 \
 		-t docker-openms:latest \
 		-t docker-openms:3.4.1 \
-		.
-
-.PHONY: boost
-boost:
-	docker build \
-		-f Dockerfile \
-		--target boost-builder \
-		-t docker-openms-boost \
-		--build-arg NUM_BUILD_CORES=$(NUM_BUILD_CORES) \
-		--build-arg BOOST_BUILD_CORES=4 \
 		.
 
 .PHONY: test
@@ -29,7 +18,6 @@ test:
 		-f Dockerfile \
 		--target test \
 		--build-arg NUM_BUILD_CORES=$(NUM_BUILD_CORES) \
-		--build-arg BOOST_BUILD_CORES=4 \
 		-t docker-openms-test \
 		.
 
