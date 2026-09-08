@@ -51,6 +51,10 @@ RUN apt-get update \
     coinor-libcoinmp1v5 \
     libqt6network6 \
     libboost-regex1.74.0 \
+    # the runtime ships libqt6network6/libssl3, so it can do TLS - without a CA
+    # store it just cannot verify anything, and File::download() fails with an
+    # opaque "SSL handshake failed" (this is what File_test caught).
+    ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
 
@@ -76,7 +80,6 @@ RUN apt-get -y update \
     g++ \
     make \
     git \
-    ca-certificates \
     # OpenMS build dependencies
     libsvm-dev \
     libglpk-dev \
@@ -97,8 +100,7 @@ RUN apt-get -y update \
     libboost-regex-dev \
     libboost-math-dev \
     libboost-random-dev \
-  && rm -rf /var/lib/apt/lists/* \
-  && update-ca-certificates
+  && rm -rf /var/lib/apt/lists/*
 
 # installing cmake
 WORKDIR /tmp
